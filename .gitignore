@@ -1,0 +1,9 @@
+.env
+db.sqlite3
+*.pyc
+__pycache__/
+Include/
+Lib/
+Scripts/
+share/
+pyvenv.cfg
