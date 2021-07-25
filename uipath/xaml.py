@@ -1,6 +1,7 @@
 from typing import List, Dict
 
 import logging
+import re
 
 import xmltodict
 
@@ -94,18 +95,52 @@ class UiPathXaml:
         # if the value is an OrderedDict, then there is only one argument
         # if the value is a list, then there are many arguments
 
+        # note: the 'property' direction is available but not used - https://docs.uipath.com/studio/v2021.10/docs/the-arguments-panel
+
+        raw_arguments: List = None
         arguments: List = None
 
         if 'Activity' in seq_dict and \
             'x:Members' in seq_dict['Activity'] and \
             'x:Property' in seq_dict['Activity']['x:Members']:
-            if type(seq_dict['Activity']['x:Members']['x:Property']) == 'OrderedDict':
-                arguments = [seq_dict['Activity']['x:Members']['x:Property']]
+            
+            # If it's a single argument, rework it into the same structure as multiple arguments
+            if isinstance(seq_dict['Activity']['x:Members']['x:Property'], dict):
+                raw_arguments = [seq_dict['Activity']['x:Members']['x:Property']]
             else:
-                arguments = seq_dict['Activity']['x:Members']['x:Property']
-            logging.debug("%d argument%s found in file %s", len(arguments), 's' if len(arguments) != 1 else '', self.xaml_path)
+                raw_arguments = seq_dict['Activity']['x:Members']['x:Property']
+            logging.debug("%d argument%s found in file %s", len(raw_arguments), 's' if len(raw_arguments) != 1 else '', self.xaml_path)
         else:
             logging.debug("No arguments found in file %s", self.xaml_path)
+
+        arguments = []
+        argument_direction_regex = r'(Out|In|InOut)Argument\((.*)\)'
+
+        if raw_arguments is not None:
+            for raw_argument in raw_arguments:
+                arg_name: str = None
+                arg_dir: str = None
+                arg_type: str = None
+
+                # the name is straightforward to extract
+                arg_name = raw_argument['@Name']
+
+                # the @Type element embeds the direction that data flows, plus the argument type
+                arg_dir_match = re.match(argument_direction_regex, raw_argument['@Type'])
+
+                if arg_dir_match is None:
+                    # This seems to match a "property" type which has no direction and seems to serve no purpose.  But it's there.
+                    arg_dir = "Property"
+                    arg_type = raw_argument['@Type']
+                else:
+                    arg_dir = arg_dir_match[1] # direction = In, Out, InOut
+                    arg_type = arg_dir_match[2] # type
+
+                arguments.append({
+                    "name": arg_name,
+                    "direction": arg_dir,
+                    "type": arg_type,
+                })
 
         return arguments
 
